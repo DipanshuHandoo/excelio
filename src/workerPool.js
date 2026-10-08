@@ -8,10 +8,15 @@ import { ExcelIoError } from './errors.js';
 
 const DEFAULT_THRESHOLD = { rows: 50_000, bytes: 10 * 1024 * 1024 };
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const moduleDirectory = typeof __EXCELIO_MODULE_DIR__ !== 'undefined'
+  ? __EXCELIO_MODULE_DIR__
+  : path.dirname(fileURLToPath(import.meta.url));
+const workerExtension = typeof __EXCELIO_WORKER_EXT__ !== 'undefined'
+  ? __EXCELIO_WORKER_EXT__
+  : '.js';
 const WORKER_PATHS = {
-  write: path.join(__dirname, 'workers', 'writer.worker.js'),
-  read:  path.join(__dirname, 'workers', 'reader.worker.js')
+  write: path.join(moduleDirectory, 'workers', `writer.worker${workerExtension}`),
+  read:  path.join(moduleDirectory, 'workers', `reader.worker${workerExtension}`)
 };
 
 /**
@@ -36,6 +41,9 @@ export async function maybeUseWorker(op, payload, options, inlineFn) {
 function decideMode(op, payload, options) {
   const useWorker = options.useWorker ?? 'auto';
 
+  if (op === 'read' && payload && typeof payload.pipe === 'function') {
+    return { mode: 'inline', reason: 'stream input' };
+  }
   if (hasHook(options)) return { mode: 'inline', reason: 'hooks present' };
   if (useWorker === false) return { mode: 'inline', reason: 'disabled' };
   if (useWorker === true)  return { mode: 'worker', reason: 'forced' };
@@ -75,7 +83,7 @@ function estimateRows(spec) {
   if (!Array.isArray(spec)) return 0;
   let n = 0;
   for (const wb of spec) {
-    for (const sheet of (wb.sheets || [])) {
+    for (const sheet of (wb?.sheets || [])) {
       n += (sheet.data?.length || 0);
     }
   }
@@ -105,32 +113,39 @@ function runInWorker(op, payload, options) {
       return;
     }
 
-    const worker = new Worker(workerPath, {
-      workerData: { op, payload: serialisePayload(payload), options }
-    });
+    let worker;
+    try {
+      worker = new Worker(workerPath, { workerData: { op, payload, options } });
+    } catch (err) {
+      reject(new ExcelIoError(err.message, { code: 'WORKER_ERROR', cause: err }));
+      return;
+    }
+    let settled = false;
 
     worker.once('message', (msg) => {
-      worker.terminate();
-      if (msg.ok) resolve(msg.result);
+      settled = true;
+      void worker.terminate().catch(() => {});
+      if (msg.ok) {
+        const result = op === 'write' && options.to === undefined
+          ? (Array.isArray(msg.result) ? msg.result.map(value => Buffer.from(value)) : Buffer.from(msg.result))
+          : msg.result;
+        resolve(result);
+      }
       else reject(new ExcelIoError(msg.error?.message || 'Worker error', {
         code: msg.error?.code || 'WORKER_ERROR',
-        cause: msg.error
+        cause: msg.error,
+        details: msg.error?.details
       }));
     });
     worker.once('error', (err) => {
-      worker.terminate();
+      settled = true;
+      void worker.terminate().catch(() => {});
       reject(new ExcelIoError(err.message, { code: 'WORKER_ERROR', cause: err }));
     });
     worker.once('exit', (code) => {
-      if (code !== 0 && code !== null) {
-        reject(new ExcelIoError(`Worker exited with code ${code}`, { code: 'WORKER_ERROR' }));
+      if (!settled) {
+        reject(new ExcelIoError(`Worker exited without a result (code ${code})`, { code: 'WORKER_ERROR' }));
       }
     });
   });
-}
-
-function serialisePayload(payload) {
-  // Buffers cross the boundary by reference (transferable). Strings are fine.
-  // Spec arrays are JSON-serialisable. Streams should never reach here (gated above).
-  return payload;
 }

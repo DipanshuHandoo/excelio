@@ -3,6 +3,7 @@
  * Run with: node src/shared/utils/excelio/__tests__/smoke.test.js
  */
 import assert from 'node:assert/strict';
+import { Readable, PassThrough } from 'node:stream';
 import { excelio, ExcelIoError } from '../index.js';
 
 let passed = 0;
@@ -178,6 +179,64 @@ await test('sheet name sanitisation truncates long names', async () => {
   const buf = await excelio.write(spec);
   const result = await excelio.read(buf);
   assert.equal(result.data[0].sheets[0].sheet.length, 31);
+});
+
+const workerSpec = [{ workbook: 'worker', sheets: [{ sheet: 'Data', data: [{ value: 42 }] }] }];
+
+await test('forced worker write returns a Buffer and can be read in a worker', async () => {
+  const buffer = await excelio.write(workerSpec, { useWorker: true });
+  assert.ok(Buffer.isBuffer(buffer));
+  const result = await excelio.read(buffer, { useWorker: true });
+  assert.equal(result.data[0].sheets[0].data[0].value, 42);
+});
+
+await test('worker multi-workbook output contains Buffers', async () => {
+  const buffers = await excelio.write([...workerSpec, ...workerSpec], { useWorker: true });
+  assert.equal(buffers.length, 2);
+  assert.ok(buffers.every(buffer => Buffer.isBuffer(buffer)));
+});
+
+await test('auto worker thresholds work at the exact boundary', async () => {
+  const buffer = await excelio.write(workerSpec, { workerThreshold: { rows: 1 } });
+  assert.ok(Buffer.isBuffer(buffer));
+  const result = await excelio.read(buffer, { workerThreshold: { bytes: buffer.length } });
+  assert.equal(result.stats.totalRows, 1);
+});
+
+await test('forced worker stream reads fall back inline', async () => {
+  const buffer = await excelio.write(workerSpec, { useWorker: false });
+  const result = await excelio.read(Readable.from([buffer]), { useWorker: true });
+  assert.equal(result.stats.totalRows, 1);
+});
+
+await test('forced worker writes with hooks fall back inline', async () => {
+  const buffer = await excelio.write(workerSpec, {
+    useWorker: true,
+    beforeWrite: row => ({ value: row.value + 1 })
+  });
+  const result = await excelio.read(buffer, { useWorker: true, validateRow: () => null });
+  assert.equal(result.data[0].sheets[0].data[0].value, 43);
+});
+
+await test('writable targets and writeStream stay inline', async () => {
+  const target = new PassThrough();
+  const chunks = [];
+  target.on('data', chunk => chunks.push(chunk));
+  assert.equal(await excelio.write(workerSpec, { to: target, useWorker: true }), target);
+  const result = await excelio.read(Buffer.concat(chunks));
+  assert.equal(result.stats.totalRows, 1);
+  const streamed = [];
+  for await (const chunk of excelio.writeStream(workerSpec, { useWorker: true })) streamed.push(chunk);
+  assert.equal((await excelio.read(Buffer.concat(streamed))).stats.totalRows, 1);
+});
+
+await test('worker parse failures preserve structured errors', async () => {
+  await assert.rejects(() => excelio.read(Buffer.from('not xlsx'), { useWorker: true }),
+    err => err instanceof ExcelIoError && err.code === 'IO_ERROR');
+  await assert.rejects(() => excelio.write([], { useWorker: true }),
+    err => err instanceof ExcelIoError && err.code === 'INVALID_SPEC');
+  await assert.rejects(() => excelio.write([null]),
+    err => err instanceof ExcelIoError && err.code === 'INVALID_SPEC');
 });
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
