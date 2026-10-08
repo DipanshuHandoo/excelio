@@ -20,11 +20,13 @@ unrelated generated files.
 - `npm test`: source API, worker, and stream regression tests.
 - `npm run build`: all four outputs, workers, source maps, and declarations.
 - `npm run build:min`: rebuild minified variants only.
+- `npm run examples`: build and run the seven self-checking examples with temporary
+	output cleanup. Select a case with `npm run examples -- 03-import-validation`.
 - `npm run test:types`: type consumers; run build first.
 - `npm run test:package`: build, pack, install outside the repo, and test consumers.
 - `npm run pack:check`: build and inspect the tarball allowlist.
 - `npm run audit:dependencies`: reject high/critical dependency advisories.
-- `npm run verify`: required release checks, including dependency audit.
+- `npm run verify`: required release checks, including examples and dependency audit.
 - `npm run test:perf`: optional 50,000-row file round-trip benchmark.
 
 Verification requires registry access to audit dependencies and install the

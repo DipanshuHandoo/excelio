@@ -57,6 +57,30 @@ import { excelio } from '@dipanshuhandoo/excelio/min';
 Minification reduces library code size, not ExcelJS's installed dependencies or
 workbook-processing time. Both builds include source maps and declarations.
 
+## Runnable Examples
+
+See the [example guide](https://github.com/DipanshuHandoo/excelio/blob/main/examples/README.md)
+for buffer round-trips, styled multi-sheet reports, validated imports, streaming,
+workers/concurrent exports, progress/cancellation, and CommonJS/minified usage.
+Examples live in the repository and use public package exports.
+
+From a checkout, run all cases or select one:
+
+```sh
+npm run examples
+npm run examples -- 03-import-validation
+```
+
+The runner builds first, checks results, and cleans up temporary spreadsheets.
+Run the file examples directly after building to keep their XLSX output:
+
+```sh
+node examples/02-sales-report.mjs
+node examples/04-streaming.mjs
+```
+
+These save to the ignored example-output/ directory by default.
+
 ## API
 
 ### Writing

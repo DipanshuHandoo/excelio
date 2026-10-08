@@ -8,6 +8,7 @@ coverage/
 *.tgz
 *.tsbuildinfo
 tmp_excelio_perf_*.xlsx
+example-output/
 .env
 .env.*
 !.env.example
