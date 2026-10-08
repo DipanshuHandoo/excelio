@@ -1,6 +1,6 @@
 {
   "name": "@dipanshuhandoo/excelio",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Excel XLSX reading and generation for Node.js with streaming writes, configurable worker-thread offloading, multi-sheet workbooks, and row validation.",
   "license": "MIT",
   "author": "DipanshuHandoo",

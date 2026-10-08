@@ -6,5 +6,6 @@
 - Add readable/minified ESM and CommonJS builds, worker bundles, and declarations.
 - Preserve Buffer results across worker threads and keep stream inputs inline.
 - Add installed-tarball consumer verification and explicit public npm commands.
-- Add seven runnable use-case examples, selection/cleanup tooling, and CI coverage.
+- Add runnable use-case examples, including XLSX-to-JSON conversion, selection/cleanup
+	tooling, and CI coverage.
 - Document XLSX API behavior, memory limitations, and release/support policies.

@@ -61,7 +61,8 @@ workbook-processing time. Both builds include source maps and declarations.
 
 See the [example guide](https://github.com/DipanshuHandoo/excelio/blob/main/examples/README.md)
 for buffer round-trips, styled multi-sheet reports, validated imports, streaming,
-workers/concurrent exports, progress/cancellation, and CommonJS/minified usage.
+workers/concurrent exports, progress/cancellation, CommonJS/minified usage, and
+XLSX-to-JSON conversion.
 Examples live in the repository and use public package exports.
 
 From a checkout, run all cases or select one:
@@ -72,11 +73,12 @@ npm run examples -- 03-import-validation
 ```
 
 The runner builds first, checks results, and cleans up temporary spreadsheets.
-Run the file examples directly after building to keep their XLSX output:
+Run the file examples directly after building to keep their XLSX/JSON output:
 
 ```sh
 node examples/02-sales-report.mjs
 node examples/04-streaming.mjs
+node examples/08-excel-to-json.mjs
 ```
 
 These save to the ignored example-output/ directory by default.
