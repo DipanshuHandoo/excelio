@@ -13,8 +13,8 @@ const DEFAULT_BATCH = 5000;
  * Read a workbook from a Buffer, file path, or readable stream.
  *
  * Currently uses the non-streaming `xlsx.load` / `xlsx.read` API for reliability.
- * For very large files (~100MB+), this may exceed memory; the worker-thread
- * offload (auto-engaged via threshold) keeps the main process unaffected.
+ * Large files may exceed available memory. Worker-thread offload keeps parsing
+ * off the main thread, but does not reduce total process memory or isolate it.
  * A future optimisation can swap to `stream.xlsx.WorkbookReader` once exceljs
  * stabilises its async iterator semantics across versions.
  */

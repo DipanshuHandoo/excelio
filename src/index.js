@@ -1,16 +1,16 @@
 /**
  * excelio — Plug-and-Play Excel ↔ JSON utility.
  *
- * Symmetric API. Works on Buffers, file paths, or streams. Streams everything
- * internally so 1M-row datasets stay memory-safe (~50 MB constant). Worker-thread
- * offload above a row/byte threshold (auto by default).
+ * Works on Buffers, file paths, or streams. Writes stream rows incrementally;
+ * reads load complete workbooks. Worker-thread offload above a row/byte threshold
+ * keeps supported operations off the main thread (auto by default).
  *
- * The whole package (this directory) is self-contained — only depends on `exceljs`
- * and Node built-ins. Drop the directory into any Node project and it works.
+ * Runtime dependencies are `exceljs` and Node built-ins. Install the package
+ * with npm; distribution files include worker entrypoints and declarations.
  *
  * Quick start:
  *
- *   import { excelio } from '@/shared/utils/excelio';
+ *   import { excelio } from '@dipanshuhandoo/excelio';
  *
  *   // Write
  *   const buf = await excelio.write([{

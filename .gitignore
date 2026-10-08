@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+.nyc_output/
+.npm/
+.cache/
+*.log
+*.tgz
+*.tsbuildinfo
+tmp_excelio_perf_*.xlsx
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db

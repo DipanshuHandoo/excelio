@@ -1,6 +1,6 @@
 /**
  * Quick sanity check for file-target writes and a moderately large dataset.
- * Run: node src/shared/utils/excelio/__tests__/perf.test.js
+ * Run: npm run test:perf
  */
 import assert from 'node:assert/strict';
 import { unlinkSync, statSync } from 'node:fs';

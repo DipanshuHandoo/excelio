@@ -1,9 +1,12 @@
 /**
  * Smoke test — verifies basic round-trip + key behaviours.
- * Run with: node src/shared/utils/excelio/__tests__/smoke.test.js
+ * Run with: npm test
  */
 import assert from 'node:assert/strict';
 import { Readable, PassThrough } from 'node:stream';
+import { EventEmitter } from 'node:events';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
+import ExcelJS from 'exceljs';
 import { excelio, ExcelIoError } from '../index.js';
 
 let passed = 0;
@@ -237,6 +240,104 @@ await test('worker parse failures preserve structured errors', async () => {
     err => err instanceof ExcelIoError && err.code === 'INVALID_SPEC');
   await assert.rejects(() => excelio.write([null]),
     err => err instanceof ExcelIoError && err.code === 'INVALID_SPEC');
+});
+
+await test('read options preserve untrimmed text and empty strings', async () => {
+  const spec = [{ workbook: 'options', sheets: [{ sheet: 'Data', data: [{ text: ' padded ', blank: '' }] }] }];
+  const buffer = await excelio.write(spec);
+  const result = await excelio.read(buffer, { nullForBlank: false, trimStrings: false });
+  assert.deepEqual(result.data[0].sheets[0].data[0], { text: ' padded ', blank: '' });
+});
+
+await test('date output modes survive worker serialization', async () => {
+  const date = new Date('2026-01-01T00:00:00.000Z');
+  const spec = [{ workbook: 'dates', sheets: [{ sheet: 'Data', columns: [{ key: 'date', type: 'date' }], data: [{ date: date.toISOString() }] }] }];
+  const buffer = await excelio.write(spec, { useWorker: true });
+  const dates = await excelio.read(buffer, { useWorker: true, dateFormat: 'date' });
+  assert.ok(dates.data[0].sheets[0].data[0].date instanceof Date);
+  assert.equal(dates.data[0].sheets[0].data[0].date.getTime(), date.getTime());
+  const epochs = await excelio.read(buffer, { useWorker: true, dateFormat: 'epoch' });
+  assert.equal(epochs.data[0].sheets[0].data[0].date, date.getTime());
+});
+
+await test('afterRead runs before validation and fail mode reports row details', async () => {
+  const buffer = await excelio.write(workerSpec);
+  const result = await excelio.read(buffer, {
+    afterRead: row => ({ value: row.value + 1 }),
+    validateRow: row => row.value === 43 ? null : { message: 'wrong value' }
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.data[0].sheets[0].data[0].value, 43);
+  await assert.rejects(() => excelio.read(buffer, {
+    validateRow: () => ({ message: 'bad row', column: 'value' }), onRowError: 'fail'
+  }), error => error instanceof ExcelIoError && error.code === 'ROW_VALIDATION' && error.details.row === 2);
+  const failedTransform = await excelio.read(buffer, { afterRead: () => { throw new Error('transform failed'); } });
+  assert.equal(failedTransform.errors[0].code, 'TRANSFORM_ERROR');
+  assert.equal(failedTransform.stats.totalRows, 0);
+});
+
+await test('progress callbacks and pre-aborted signals force inline operation', async () => {
+  const writes = [];
+  const buffer = await excelio.write(workerSpec, { useWorker: true, batchSize: 1, onProgress: event => writes.push(event) });
+  assert.equal(writes.at(-1).rowsProcessed, 1);
+  assert.equal(writes.at(-1).phase, 'write');
+  const reads = [];
+  await excelio.read(buffer, { useWorker: true, batchSize: 1, onProgress: event => reads.push(event) });
+  assert.equal(reads[0].rowsProcessed, 1);
+  assert.equal(reads[0].phase, 'read');
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(() => excelio.read(buffer, { signal: controller.signal }),
+    error => error instanceof ExcelIoError && error.code === 'ABORTED');
+  await assert.rejects(() => excelio.write(workerSpec, { signal: controller.signal }),
+    error => error instanceof ExcelIoError && error.code === 'ABORTED');
+});
+
+await test('streamed workbook retains styling, coercion, and sanitized duplicate names', async () => {
+  const sheet = {
+    sheet: 'a/b',
+    columns: [{ key: 'amount', type: 'number', format: '#,##0.00' }, { key: 'active', type: 'boolean' }],
+    styling: { headerBold: true, freezeHeader: true, autoFilter: true },
+    data: [{ amount: '12.50', active: 'true' }]
+  };
+  const buffer = await excelio.write([{ workbook: 'styles', properties: { author: 'tester' }, sheets: [sheet, sheet] }]);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  assert.equal(workbook.creator, 'tester');
+  assert.deepEqual(workbook.worksheets.map(worksheet => worksheet.name), ['a_b', 'a_b (2)']);
+  const worksheet = workbook.worksheets[0];
+  assert.equal(worksheet.getRow(1).font.bold, true);
+  assert.equal(worksheet.views[0].state, 'frozen');
+  assert.ok(worksheet.autoFilter);
+  assert.equal(worksheet.getCell('A2').value, 12.5);
+  assert.equal(worksheet.getCell('A2').numFmt, '#,##0.00');
+  assert.equal(worksheet.getCell('B2').value, true);
+});
+
+await test('non-cloneable worker payloads reject with WORKER_ERROR', async () => {
+  const spec = [{ workbook: 'invalid', sheets: [{ sheet: 'Data', data: [{ value: () => 1 }] }] }];
+  await assert.rejects(() => excelio.write(spec, { useWorker: true }),
+    error => error instanceof ExcelIoError && error.code === 'WORKER_ERROR');
+});
+
+await test('a worker exiting successfully without a result rejects', async () => {
+  const workerThreads = createRequire(import.meta.url)('node:worker_threads');
+  const OriginalWorker = workerThreads.Worker;
+  class ExitingWorker extends EventEmitter {
+    constructor() {
+      super();
+      queueMicrotask(() => this.emit('exit', 0));
+    }
+  }
+  try {
+    workerThreads.Worker = ExitingWorker;
+    syncBuiltinESMExports();
+    await assert.rejects(() => excelio.write(workerSpec, { useWorker: true }),
+      error => error instanceof ExcelIoError && error.code === 'WORKER_ERROR');
+  } finally {
+    workerThreads.Worker = OriginalWorker;
+    syncBuiltinESMExports();
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

@@ -1,8 +1,10 @@
+/// <reference types="node" />
 /**
  * excelio — Plug-and-Play Excel ↔ JSON utility.
  * TypeScript declarations for consumers; the package itself is plain JS.
  */
 import type { Readable, Writable } from 'node:stream';
+import type { Buffer } from 'node:buffer';
 
 export type ExcelIoErrorCode =
   | 'INVALID_SPEC'
@@ -12,6 +14,7 @@ export type ExcelIoErrorCode =
   | 'ROW_VALIDATION';
 
 export class ExcelIoError extends Error {
+  constructor(message: string, options?: { code?: ExcelIoErrorCode; cause?: unknown; details?: unknown });
   code: ExcelIoErrorCode;
   cause?: unknown;
   details?: unknown;
@@ -59,6 +62,22 @@ export interface WorkbookSpec<Row = Record<string, unknown>> {
 
 export type Spec<Row = Record<string, unknown>> = WorkbookSpec<Row>[];
 
+export interface ParsedColumn {
+  key: string;
+  header: string;
+}
+
+export interface ParsedSheet<Row = Record<string, unknown>> {
+  sheet: string;
+  columns: ParsedColumn[];
+  data: Row[];
+}
+
+export interface ParsedWorkbook<Row = Record<string, unknown>> {
+  workbook: undefined;
+  sheets: ParsedSheet<Row>[];
+}
+
 export interface RowContext {
   workbookIndex: number;
   workbookName?: string;
@@ -78,7 +97,7 @@ export interface RowError {
 
 export interface ReadResult<Row = Record<string, unknown>> {
   ok: boolean;
-  data: Spec<Row>;
+  data: ParsedWorkbook<Row>[];
   errors: RowError[];
   stats: {
     totalRows: number;
@@ -103,15 +122,15 @@ export interface Logger {
 }
 
 export interface CommonOptions {
-  /** Called per row at every batchSize boundary. */
+  /** Called at batchSize row boundaries; writing also emits a final update. */
   onProgress?: (e: ProgressEvent) => void;
-  /** AbortController signal; checked at every batch boundary. */
+  /** Checked between rows/sheets; does not interrupt parsing or synchronous loops. */
   signal?: AbortSignal;
   /** BYO logger. Default: no-op. */
   logger?: Logger;
-  /** Hooks force inline execution (workers can't serialise functions). */
+  /** Progress notification interval; does not yield processing or bound memory. */
   batchSize?: number;
-  /** 'auto' (default), true (always), false (never). */
+  /** 'auto' (default), true (request worker), false (inline). Hooks/streams force inline. */
   useWorker?: 'auto' | boolean;
   /** Auto-mode threshold. Default: { rows: 50_000, bytes: 10MB }. */
   workerThreshold?: { rows?: number; bytes?: number };
@@ -142,6 +161,8 @@ export interface ReadOptions<Row = Record<string, unknown>> extends CommonOption
 }
 
 export interface Excelio {
+  write<Row = Record<string, unknown>, Target extends string | Writable = string | Writable>(spec: Spec<Row>, options: WriteOptions<Row> & { to: Target }): Promise<Target>;
+  write<Row = Record<string, unknown>>(spec: Spec<Row>, options?: WriteOptions<Row> & { to?: undefined }): Promise<Buffer | Buffer[]>;
   write<Row = Record<string, unknown>>(spec: Spec<Row>, options?: WriteOptions<Row>): Promise<Buffer | Buffer[] | string | Writable>;
   writeStream<Row = Record<string, unknown>>(spec: Spec<Row>, options?: WriteOptions<Row>): Readable;
   read<Row = Record<string, unknown>>(input: Buffer | string | Readable, options?: ReadOptions<Row>): Promise<ReadResult<Row>>;
