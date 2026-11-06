@@ -1,6 +1,6 @@
 {
   "name": "@dipanshuhandoo/excelio",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Excel XLSX reading and generation for Node.js with streaming writes, configurable worker-thread offloading, multi-sheet workbooks, and row validation.",
   "license": "MIT",
   "author": "DipanshuHandoo",
@@ -31,6 +31,7 @@
     "build:min": "node scripts/build.mjs --min",
     "test": "node src/__tests__/smoke.test.js",
     "test:perf": "node src/__tests__/perf.test.js",
+    "test:memory": "node --expose-gc src/__tests__/memory.test.js",
     "examples": "node scripts/run-examples.mjs",
     "test:types": "tsc --noEmit --strict --module nodenext --target es2022 test/types/consumer.mts test/types/consumer.cts",
     "test:package": "node scripts/check-package.mjs",
@@ -45,5 +46,5 @@
     "prepublishOnly": "npm run verify"
   },
   "dependencies": { "exceljs": "^4.4.0" },
-  "devDependencies": { "@types/node": "^22.0.0", "esbuild": "^0.28.2", "typescript": "^7.0.2" }
+  "devDependencies": { "@types/node": "^22.0.0", "esbuild": "^0.28.2", "jszip": "^3.10.1", "typescript": "^7.0.2" }
 }

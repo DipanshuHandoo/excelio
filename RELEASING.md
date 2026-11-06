@@ -32,9 +32,16 @@
 ```sh
 npm ci
 npm run verify
+npm run test:memory
 npm run pack:check
 npm run publish:dry-run
 ```
+
+`npm run test:memory` is a manual release gate (several minutes, not run in CI).
+It writes 1,000,000 streamed rows plus slow-sink scenarios and fails when peak RSS
+growth exceeds the budget in `src/__tests__/memory.test.js`. Re-run it, and update
+the budget and README numbers if needed, whenever the exceljs dependency changes:
+the bound relies on exceljs/archiver internals.
 
 Explicit publication:
 

@@ -54,7 +54,17 @@ try {
     error => error instanceof ExcelIoError && error.code === 'IO_ERROR');
   await assert.rejects(() => excelio.write([], { useWorker: true }),
     error => error instanceof ExcelIoError && error.code === 'INVALID_SPEC');
-  console.log(`Installed ${format}: inline/worker round-trips, multi-workbooks, files, streams, hooks, and errors passed.`);
+  async function* iterableRows() { for (let value = 1; value <= 5; value++) yield { value, name: `row ${value}` }; }
+  const iterableFile = path.join(temporary, 'iterable.xlsx');
+  await excelio.write([{ workbook: 'iterable', sheets: [{ sheet: 'Data', data: iterableRows() }] }],
+    { to: iterableFile, useWorker: true, maxRowsPerSheet: 3 });
+  const iterableResult = await excelio.read(iterableFile);
+  assert.deepEqual(iterableResult.data[0].sheets.map(sheet => sheet.sheet), ['Data', 'Data (2)']);
+  assert.equal(iterableResult.stats.totalRows, 5);
+  async function* failingRows() { yield { value: 1 }; throw new Error('source failed'); }
+  await assert.rejects(() => excelio.write([{ workbook: 'failing', sheets: [{ sheet: 'Data', data: failingRows() }] }]),
+    error => error instanceof ExcelIoError && error.code === 'SOURCE_ERROR');
+  console.log(`Installed ${format}: inline/worker round-trips, multi-workbooks, files, streams, iterables, hooks, and errors passed.`);
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

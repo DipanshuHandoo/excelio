@@ -11,7 +11,8 @@ export type ExcelIoErrorCode =
   | 'IO_ERROR'
   | 'ABORTED'
   | 'WORKER_ERROR'
-  | 'ROW_VALIDATION';
+  | 'ROW_VALIDATION'
+  | 'SOURCE_ERROR';
 
 export class ExcelIoError extends Error {
   constructor(message: string, options?: { code?: ExcelIoErrorCode; cause?: unknown; details?: unknown });
@@ -41,11 +42,20 @@ export interface SheetStyling {
   autoFilter?: boolean;
 }
 
+/**
+ * Rows for one sheet: an array, or any sync/async iterable (generator, database cursor,
+ * object-mode stream). Iterables are consumed once and always written inline.
+ */
+export type RowSource<Row> = readonly Row[] | Iterable<Row> | AsyncIterable<Row>;
+
 export interface SheetSpec<Row = Record<string, unknown>> {
   sheet: string;
   columns?: ColumnSpec[];
   styling?: SheetStyling;
-  data: Row[];
+  /** Omitted or null means an empty sheet. */
+  data?: RowSource<Row> | null;
+  /** Optional row-count hint used for progress `totalRows` when `data` is an iterable. */
+  totalRows?: number;
 }
 
 export interface WorkbookSpec<Row = Record<string, unknown>> {
@@ -83,6 +93,8 @@ export interface RowContext {
   workbookName?: string;
   sheetIndex: number;
   sheetName: string;
+  /** 1 for the first worksheet of a logical sheet, 2+ for continuation sheets. Write only. */
+  sheetPart?: number;
   rowNumber: number;
 }
 
@@ -111,7 +123,10 @@ export interface ProgressEvent {
   workbookIndex?: number;
   sheetIndex?: number;
   sheetName?: string;
+  /** Write only: worksheet part of the logical sheet (see `maxRowsPerSheet`). */
+  sheetPart?: number;
   rowsProcessed: number;
+  /** Undefined when an iterable sheet has no `totalRows` hint. */
   totalRows?: number;
 }
 
@@ -124,11 +139,11 @@ export interface Logger {
 export interface CommonOptions {
   /** Called at batchSize row boundaries; writing also emits a final update. */
   onProgress?: (e: ProgressEvent) => void;
-  /** Checked between rows/sheets; does not interrupt parsing or synchronous loops. */
+  /** Checked between rows/sheets; iterable sheets also observe it while waiting for output capacity. */
   signal?: AbortSignal;
   /** BYO logger. Default: no-op. */
   logger?: Logger;
-  /** Progress notification interval; does not yield processing or bound memory. */
+  /** Positive integer. Progress interval; iterable sheets also yield and bound output backlog at this interval. */
   batchSize?: number;
   /** 'auto' (default), true (request worker), false (inline). Hooks/streams force inline. */
   useWorker?: 'auto' | boolean;
@@ -141,6 +156,10 @@ export interface WriteOptions<Row = Record<string, unknown>> extends CommonOptio
   to?: string | Writable;
   /** Per-row transform applied before writing. */
   beforeWrite?: (row: Row, ctx: RowContext) => Row | void;
+  /** Data rows per worksheet before continuing on "<name> (2)". Default and maximum 1,048,575. */
+  maxRowsPerSheet?: number;
+  /** Excel shared-strings table. 'auto' (default): on unless any sheet has iterable data. */
+  sharedStrings?: 'auto' | boolean;
 }
 
 export interface ReadOptions<Row = Record<string, unknown>> extends CommonOptions {
