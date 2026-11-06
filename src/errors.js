@@ -8,6 +8,7 @@
  *   ABORTED        — operation cancelled via AbortController
  *   WORKER_ERROR   — worker thread crashed or returned an error
  *   ROW_VALIDATION — a row failed validation (only thrown when onRowError === 'fail')
+ *   SOURCE_ERROR   — an iterable sheet's row source threw or returned an invalid result
  */
 export class ExcelIoError extends Error {
   constructor(message, { code = 'IO_ERROR', cause, details } = {}) {

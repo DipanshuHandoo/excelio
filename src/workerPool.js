@@ -5,6 +5,7 @@ import path from 'node:path';
 import { statSync } from 'node:fs';
 
 import { ExcelIoError } from './errors.js';
+import { specHasIterable } from './rowSource.js';
 
 const DEFAULT_THRESHOLD = { rows: 50_000, bytes: 10 * 1024 * 1024 };
 
@@ -43,6 +44,11 @@ function decideMode(op, payload, options) {
 
   if (op === 'read' && payload && typeof payload.pipe === 'function') {
     return { mode: 'inline', reason: 'stream input' };
+  }
+  // Iterators cannot be structured-cloned into a worker.
+  if (op === 'write' && specHasIterable(payload)) {
+    if (useWorker === true) options.logger?.warn?.('excelio: iterable sheet data is written inline; useWorker ignored');
+    return { mode: 'inline', reason: 'iterable sheet data' };
   }
   if (hasHook(options)) return { mode: 'inline', reason: 'hooks present' };
   if (useWorker === false) return { mode: 'inline', reason: 'disabled' };
@@ -84,7 +90,7 @@ function estimateRows(spec) {
   let n = 0;
   for (const wb of spec) {
     for (const sheet of (wb?.sheets || [])) {
-      n += (sheet.data?.length || 0);
+      n += Array.isArray(sheet?.data) ? sheet.data.length : 0;
     }
   }
   return n;

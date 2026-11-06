@@ -34,6 +34,46 @@ npm run examples -- 07-commonjs-and-minified.cjs
 | [06-progress-and-cancellation.mjs](06-progress-and-cancellation.mjs) | Observe export/import processing | beforeWrite, explicit added columns, progress, synchronous cancellation checks |
 | [07-commonjs-and-minified.cjs](07-commonjs-and-minified.cjs) | Integrate with a CommonJS application | require, minified exports, worker compatibility |
 | [08-excel-to-json.mjs](08-excel-to-json.mjs) | Convert an XLSX file to JSON files | All-sheet metadata/data, first-sheet rows, ISO dates, null blanks, JSON serialization |
+| [09-service-exports.mjs](09-service-exports.mjs) | Migrate a service using an internal writeSpec import | Jobs/manifest exports, public write API, Buffer results, existing column mappings |
+| [10-streaming-rows.mjs](10-streaming-rows.mjs) | Export rows from a paged source without building an array | async generator `data`, file target, `maxRowsPerSheet` continuation sheets, `totalRows` progress hint |
+
+## Migrate an Internal writeSpec Import
+
+Use `import { excelio } from '@dipanshuhandoo/excelio'` instead of importing the
+internal writer. Replace `writeSpec(...)` with `excelio.write(...)` and wrap your
+sheet specs in a workbook's `sheets` array. Rename each sheet's `name` to `sheet`
+and `rows` to `data`; keep `columns` unchanged:
+
+```js
+import { excelio } from '@dipanshuhandoo/excelio';
+
+const buffer = await excelio.write([
+  {
+    workbook: 'jobs',
+    sheets: [
+      {
+        sheet: 'Jobs',
+        columns: [{ key: 'id', header: 'ID' }],
+        data: [{ id: 'job-001' }],
+      },
+    ],
+  },
+]);
+```
+
+With one workbook and no `to` option, the result is a `Buffer`, so your existing
+HTTP download or file-writing caller can keep using the returned bytes. The
+workbook label is not a file destination. Internal writer paths are not public
+package exports.
+
+[09-service-exports.mjs](09-service-exports.mjs) exports complete `jobsToXlsx`
+and `manifestToXlsx` functions matching the mongo-clone export service. The
+ExcelJS import and `runExample` function only verify the demo; your service needs
+the `excelio` import and the two export functions. CSV functions are unchanged.
+
+```sh
+npm run examples -- 09-service-exports
+```
 
 ## Keep Generated Files
 
@@ -72,12 +112,14 @@ the first public release must exist before registry installation is available.
   file destination in the pipeline can be replaced with an HTTP response or other
   compatible destination; use the same error/lifecycle handling.
 - Stream input does not make reading constant-memory: the whole workbook is loaded.
-  Input arrays, shared strings, and buffer output also consume memory.
+  Input arrays, shared strings, and buffer output also consume memory. For large
+  exports, pass an iterable as `data` with a `to` target (example 10).
 - Each worker job creates a new thread. Promise.all is application-level concurrency,
   not a reusable pool. Limit concurrent exports according to available resources.
-- Worker payloads must be structured-cloneable. Hooks, signals, loggers, and streams
-  force inline execution. No callbacks are passed in the worker-only example.
+- Worker payloads must be structured-cloneable. Hooks, signals, loggers, streams,
+  and iterable sheet data force inline execution. No callbacks are passed in the worker-only example.
 - The cancellation example aborts synchronously inside a progress callback. A timer
-  cannot fire during a synchronous row loop; cancellation does not interrupt initial
-  parsing or workbook commit. Discard incomplete output after errors or cancellation.
+  cannot fire during a synchronous array row loop; iterable sheets yield every
+  `batchSize` rows, so timers can abort them. Cancellation does not interrupt initial
+  parsing or workbook commit. A failed or aborted write to a file path removes the file.
 - Minification does not shrink ExcelJS dependencies or guarantee faster processing.

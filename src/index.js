@@ -26,7 +26,7 @@
  * See README.md for the full reference.
  */
 
-import { writeSpec, writeSpecStream } from './writer.js';
+import { writeSpec, writeSpecStream, preflightWrite } from './writer.js';
 import { readSource } from './reader.js';
 import { ExcelIoError } from './errors.js';
 import { maybeUseWorker } from './workerPool.js';
@@ -38,14 +38,18 @@ export const excelio = {
    * is provided and returns the target.
    */
   async write(spec, options = {}) {
+    // Validate before routing so invalid specs fail the same way inline and in a worker.
+    preflightWrite(spec, options);
     return maybeUseWorker('write', spec, options, () => writeSpec(spec, options));
   },
 
   /**
    * Returns a Readable stream for the first workbook. Synchronous return;
-   * errors during the underlying write surface via the stream's 'error' event.
+   * spec errors throw immediately, errors during the underlying write surface
+   * via the stream's 'error' event.
    */
   writeStream(spec, options = {}) {
+    preflightWrite(spec, options);
     return writeSpecStream(spec, options);
   },
 
